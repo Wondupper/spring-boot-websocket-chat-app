@@ -1,118 +1,142 @@
 'use strict';
 
-var usernamePage = document.querySelector('#username-page');
-var chatPage = document.querySelector('#chat-page');
-var usernameForm = document.querySelector('#usernameForm');
-var messageForm = document.querySelector('#messageForm');
-var messageInput = document.querySelector('#message');
-var messageArea = document.querySelector('#messageArea');
-var connectingElement = document.querySelector('.connecting');
+let loginSection = document.getElementById('login-section');
+let chatSection = document.getElementById('chat-section');
+let loginForm = document.getElementById('loginForm');
+let messageForm = document.getElementById('messageForm');
+let chatMessages = document.getElementById('chat-messages');
+let statusElement = document.querySelector('.status');
 
-var stompClient = null;
-var username = null;
+let usernameInput = document.getElementById('username');
+let chatMessageInput = document.getElementById('chatMessage');
+let logoutButton = document.getElementById('logout');
 
-var colors = [
-    '#2196F3', '#32c787', '#00BCD4', '#ff5652',
-    '#ffc107', '#ff85af', '#FF9800', '#39bbb0'
-];
+let stompClient = null;
+let username = null;
 
-function connect(event) {
-    username = document.querySelector('#name').value.trim();
+const avatarColors = ['#e74c3c', '#8e44ad', '#3498db', '#16a085', '#f39c12', '#d35400', '#2c3e50'];
 
-    if(username) {
-        usernamePage.classList.add('hidden');
-        chatPage.classList.remove('hidden');
+/**
+ * Подключение к чату при отправке формы логина.
+ */
+function connectToChat(event) {
+    event.preventDefault();
+    username = usernameInput.value.trim();
 
-        var socket = new SockJS('/ws');
+    if (username) {
+        // Скрываем форму авторизации и показываем чат
+        loginSection.style.display = 'none';
+        chatSection.classList.remove('hidden');
+
+        // Инициализация WebSocket
+        let socket = new SockJS('/ws');
         stompClient = Stomp.over(socket);
-
         stompClient.connect({}, onConnected, onError);
     }
-    event.preventDefault();
 }
 
-
+/**
+ * Действия при успешном подключении.
+ */
 function onConnected() {
-    // Subscribe to the Public Topic
+    // Подписываемся на публичный топик
     stompClient.subscribe('/topic/public', onMessageReceived);
 
-    // Tell your username to the server
+    // Сообщаем серверу о новом участнике
     stompClient.send("/app/chat.addUser",
         {},
-        JSON.stringify({sender: username, type: 'JOIN'})
-    )
+        JSON.stringify({ sender: username, type: 'JOIN' })
+    );
 
-    connectingElement.classList.add('hidden');
+    statusElement.style.display = 'none';
 }
 
-
+/**
+ * Обработка ошибки подключения.
+ */
 function onError(error) {
-    connectingElement.textContent = 'Could not connect to WebSocket server. Please refresh this page to try again!';
-    connectingElement.style.color = 'red';
+    statusElement.textContent = 'Connection error. Please refresh the page.';
+    statusElement.style.backgroundColor = '#e74c3c';
 }
 
+/**
+ * Отправка сообщения в чат.
+ */
+function sendChatMessage(event) {
+    event.preventDefault();
+    let messageContent = chatMessageInput.value.trim();
 
-function sendMessage(event) {
-    var messageContent = messageInput.value.trim();
-    if(messageContent && stompClient) {
-        var chatMessage = {
+    if (messageContent && stompClient) {
+        let chatMsg = {
             sender: username,
-            content: messageInput.value,
+            content: messageContent,
             type: 'CHAT'
         };
-        stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMessage));
-        messageInput.value = '';
+
+        stompClient.send("/app/chat.sendMessage", {}, JSON.stringify(chatMsg));
+        chatMessageInput.value = '';
     }
-    event.preventDefault();
 }
 
-
+/**
+ * Обработка полученного сообщения.
+ */
 function onMessageReceived(payload) {
-    var message = JSON.parse(payload.body);
+    let message = JSON.parse(payload.body);
+    let li = document.createElement('li');
 
-    var messageElement = document.createElement('li');
-
-    if(message.type === 'JOIN') {
-        messageElement.classList.add('event-message');
-        message.content = message.sender + ' joined!';
+    if (message.type === 'JOIN') {
+        li.textContent = `${message.sender} has joined the chat.`;
+        li.style.textAlign = 'center';
+        li.style.fontStyle = 'italic';
     } else if (message.type === 'LEAVE') {
-        messageElement.classList.add('event-message');
-        message.content = message.sender + ' left!';
+        li.textContent = `${message.sender} has left the chat.`;
+        li.style.textAlign = 'center';
+        li.style.fontStyle = 'italic';
     } else {
-        messageElement.classList.add('chat-message');
+        // Создаем аватар
+        let avatar = document.createElement('span');
+        avatar.textContent = message.sender.charAt(0).toUpperCase();
+        avatar.style.backgroundColor = getAvatarColor(message.sender);
+        avatar.style.color = '#fff';
+        avatar.style.display = 'inline-block';
+        avatar.style.width = '30px';
+        avatar.style.height = '30px';
+        avatar.style.borderRadius = '50%';
+        avatar.style.textAlign = 'center';
+        avatar.style.lineHeight = '30px';
+        avatar.style.marginRight = '10px';
+        li.appendChild(avatar);
 
-        var avatarElement = document.createElement('i');
-        var avatarText = document.createTextNode(message.sender[0]);
-        avatarElement.appendChild(avatarText);
-        avatarElement.style['background-color'] = getAvatarColor(message.sender);
-
-        messageElement.appendChild(avatarElement);
-
-        var usernameElement = document.createElement('span');
-        var usernameText = document.createTextNode(message.sender);
-        usernameElement.appendChild(usernameText);
-        messageElement.appendChild(usernameElement);
+        // Текст сообщения
+        let text = document.createElement('span');
+        text.innerHTML = `<strong>${message.sender}:</strong> ${message.content}`;
+        li.appendChild(text);
     }
 
-    var textElement = document.createElement('p');
-    var messageText = document.createTextNode(message.content);
-    textElement.appendChild(messageText);
-
-    messageElement.appendChild(textElement);
-
-    messageArea.appendChild(messageElement);
-    messageArea.scrollTop = messageArea.scrollHeight;
+    chatMessages.appendChild(li);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
-
-function getAvatarColor(messageSender) {
-    var hash = 0;
-    for (var i = 0; i < messageSender.length; i++) {
-        hash = 31 * hash + messageSender.charCodeAt(i);
+/**
+ * Функция для получения цвета аватара на основе имени отправителя.
+ */
+function getAvatarColor(sender) {
+    let hash = 0;
+    for (let i = 0; i < sender.length; i++) {
+        hash = sender.charCodeAt(i) + ((hash << 5) - hash);
     }
-    var index = Math.abs(hash % colors.length);
-    return colors[index];
+    let index = Math.abs(hash) % avatarColors.length;
+    return avatarColors[index];
 }
 
-usernameForm.addEventListener('submit', connect, true)
-messageForm.addEventListener('submit', sendMessage, true)
+// Обработчики событий
+loginForm.addEventListener('submit', connectToChat);
+messageForm.addEventListener('submit', sendChatMessage);
+
+if (logoutButton) {
+    logoutButton.addEventListener('click', function() {
+        // Для простоты перезагружаем страницу при logout
+        location.reload();
+    });
+}
