@@ -7,7 +7,7 @@ import lombok.*;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
-public class ChatMessage {
+public class ChatMessage { // Класс - сообщение и его содержимое
 
     private MessageType type;
     private String content;
